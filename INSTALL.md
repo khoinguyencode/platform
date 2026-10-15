@@ -40,7 +40,7 @@ Các lệnh sau chạy trong **Ubuntu/Linux**, không phải PowerShell:
 
 ```bash
 cd ~
-git clone https://github.com/Dashlane04/platform.git
+git clone https://github.com/khoinguyencode/platform.git
 cd platform
 bash scripts/setup.sh
 ```
@@ -113,7 +113,7 @@ Script tự đặt origin tương ứng, trừ khi bạn đã export `ARENA_API_
 1. Đăng nhập BTC `organizer` bằng mật khẩu tự tạo. Trong **Đội & tài khoản**, dùng **Thêm đội & cấp tài khoản** để tạo hai đội, hoặc gửi hai hồ sơ qua **Đăng ký đội** rồi BTC duyệt. Điền thông tin thử, không dùng danh tính thật nếu chỉ test.
 2. BTC cấp username và mật khẩu tạm cho mỗi đội. Credential chỉ hiện ở hộp thoại cấp/reset; lưu lại cho bài test. Chức năng này không gửi email.
 3. Đăng xuất BTC, đăng nhập đội 1 và đổi mật khẩu tạm ở lần đầu. Muốn mở nhiều đội cùng lúc, dùng browser profile/phiên riêng; các tab cùng profile chia sẻ session.
-4. Vào **Nộp bot → Tải starter OTTv2**. Nộp nguyên ZIP với version `v1.0.0`, chọn **SDK v2**. ZIP có `bot.cpp` ở gốc, không có thư mục bọc ngoài, binary hoặc build script.
+4. Vào **Nộp bot**, chọn ngôn ngữ (C++17, C11 hoặc Python 3.11) rồi **Tải starter OTTv2**. Nộp nguyên ZIP với version `v1.0.0`, chọn **SDK v2**. ZIP có file chính (`bot.cpp`, `bot.c` hoặc `bot.py`) ở gốc, không có thư mục bọc ngoài, binary hoặc build script.
 5. Vào **Test & benchmark**, chọn bản bot, **OTT v2 tiêu chuẩn**, **đấu thường 5 phút/đội**. Chờ hoàn tất **72/72 mẫu** và `passed`. Có thể thử **Luyện tập** bằng cùng một version ở cả hai màu.
 6. Làm tương tự với đội 2. BTC vào **Giải đấu**, tạo giải tiêu chuẩn hai đội, chọn **5 phút/đội** và **Mở đăng ký**.
 7. Mỗi đội mở giải, chọn benchmark đã đạt và xác nhận ủy quyền xử lý timeout. Nếu không có benchmark để chọn, kiểm tra đúng luật/hash, quỹ thời gian, image và phiên bản bot.
@@ -198,3 +198,36 @@ Trên PowerShell dùng `npm.cmd run check` nếu policy chặn npm.ps1. Prototyp
 | Docker báo dockerInference / engine.sock không truy cập được | Lỗi runtime Docker Desktop trên Windows; đọc mục sự cố trong SECURITY.md. Không factory reset/xóa volume chỉ để thử lại |
 
 Tài liệu kỹ thuật: [backend](arena-backend/docs/BACKEND.md), [quản trị](arena-backend/docs/ADMIN.md), [thể thức giải](arena-backend/docs/COMPETITIONS.md), [timing](arena-backend/docs/TIMING.md), [bảo mật](arena-backend/docs/SECURITY.md).
+
+## Worker, ngôn ngữ và hàng đợi
+
+Python của server cần 3.11+. Bot Python chạy bằng **PyPy 7.3.23 (Python 3.11)** trong image worker, chỉ thư viện chuẩn, không pip. Ba ngôn ngữ `cpp17`, `c11`, `python3` dùng cùng giao thức và cùng quỹ giờ; C/C++ thường nhanh hơn Python. Xem [hướng dẫn ngôn ngữ](arena-backend/docs/BOT-LANGUAGES.md) và [số đo Python/C++](arena-backend/docs/PYTHON-COMPARISON.md).
+
+Một tiến trình Uvicorn giữ khóa cho mỗi thư mục dữ liệu; bên trong có N worker, mặc định bằng số CPU trừ 2. Cấu hình bằng biến môi trường trước khi chạy (file `.env` không được tự đọc):
+
+```bash
+export ARENA_WORKERS=4
+export ARENA_BUILD_WORKERS=2
+export ARENA_CONNECTION_LIMIT=1024
+# Chỉ khi có reverse proxy đã biết:
+# export ARENA_TRUSTED_PROXIES=127.0.0.1/32,::1/128
+bash scripts/start.sh
+```
+
+Mỗi trận chạy trên một CPU riêng; hai bot dùng chung CPU đó và bot không tới lượt bị đóng băng. Hàng đợi nằm trong SQLite, ưu tiên trận chính thức → benchmark → luyện tập, không giới hạn tổng số job. Mỗi đội tối đa 4 tác vụ đang chạy, 4 yêu cầu đang chờ và 200 tác vụ lưu trữ. Yêu cầu mới **cùng mục đích** (benchmark cho cùng giải hoặc cùng cấu hình giờ/luật, hay trận luyện tập mới) thay yêu cầu cũ còn đang chờ; tác vụ đang chạy không bị hủy. API trả `queue_position`. Khởi động lại giữ các job đang chờ; job đang chạy dở bị hủy, không tính kết quả.
+
+Khi khởi động, server dọn container sót của chính thư mục dữ liệu này rồi kiểm tra các image worker; trong vài giây đầu `/health/live` đã trả 200 nhưng `/health/ready` còn 503. Image đã dùng cho giải được giữ thêm tag `uet-arena-pinned:<digest>`; đừng xóa image/artifact mà giải còn dùng. Backup SQLite, `sources`, `artifacts` và `compiled-cache` khi server đã dừng.
+
+BTC tạo giải Swiss (tới 4096 đội) hoặc vòng tròn hai lượt (tới 32 đội), có thể tùy chỉnh bàn 7–15 hàng/cột, căn cứ và điều kiện thắng; luật được giữ cố định theo giải. Đội benchmark từ trang giải để dùng đúng luật và quỹ giờ. Xem [COMPETITIONS.md](arena-backend/docs/COMPETITIONS.md).
+
+## Thử tải nhiều đội
+
+`arena-backend/tests/load_lab/` tạo nhiều đội ảo, mỗi đội một địa chỉ IP loopback, cùng đăng nhập → nộp bot (nhiều thuật toán và các bot lỗi cố ý) → benchmark → đấu giải:
+
+```bash
+cd arena-backend
+.venv/bin/python tests/load_lab/e2e_submissions.py --teams 100 --tournament 8
+.venv/bin/python tests/load_lab/algo_eval.py scaling --workers 1,2,4,8
+```
+
+Dữ liệu và báo cáo nằm ở `test-results/load-lab/`, tách khỏi dữ liệu thật.

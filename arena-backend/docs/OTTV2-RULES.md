@@ -153,7 +153,7 @@ Khi nhiều điều kiện cùng thoả, xét theo thứ tự:
 
 ## 7. Đối chiếu với mã nguồn
 
-Toàn bộ luật nằm ở một file duy nhất: [`../shared/gameRules.js`](../shared/gameRules.js).
+Luật được thực thi bởi [`arena/engine.py`](../arena/engine.py). UI tham chiếu luật trong [`live/rules.js`](../../uet-bot-arena/dist/live/rules.js); engine phía server quyết định kết quả.
 
 | Luật | Hàm |
 |---|---|

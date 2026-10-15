@@ -8,15 +8,15 @@ make load-test
 .venv/bin/python tests/load_resilience.py --soak-seconds 30
 ```
 
-Script tự tạo database tạm trong `test-results`, 6 đội giả lập và một server trên cổng localhost ngẫu nhiên. Server dùng đúng CLI hiện có: một process, một worker tuần tự, giới hạn 32 kết nối/task HTTP. Không dùng tài khoản, database, cổng 41810 hoặc kết quả giải đang sử dụng. Tiêm sự cố chỉ nhắm PID controller do script tạo và container có mount nằm trong đúng thư mục test. Không dừng Docker Desktop, không xóa image/volume.
+Script tự tạo database tạm trong `test-results`, 6 đội giả lập và một server trên cổng localhost ngẫu nhiên. Server dùng đúng CLI hiện có (một process) nhưng đặt `ARENA_WORKERS=1` để kịch bản giết container đang chạy luôn xác định. Không dùng tài khoản, database, cổng 41810 hoặc kết quả giải đang sử dụng. Tiêm sự cố chỉ nhắm PID controller do script tạo và container có mount nằm trong đúng thư mục test. Không dừng Docker Desktop, không xóa image/volume.
 
 ## Các phép đo tải
 
 - Đọc hỗn hợp `/teams/me`, dashboard, source, job, giải và config: 240 request ở mỗi mức 1, 8 và 24 client đồng thời.
 - Duy trì tải đọc 12 client trong 15 giây mặc định. Đây là bài thử ngắn, không thay thế soak test nhiều giờ.
-- Đợt 48 client vượt giới hạn admission: ghi riêng HTTP 503 dự kiến; không tính chúng như request thành công. Sau đợt này phải tiếp tục phục vụ bình thường.
+- Đợt 48 client đồng thời: nếu vượt giới hạn kết nối (`ARENA_CONNECTION_LIMIT`, mặc định 1024) thì HTTP 503 được ghi riêng, không tính là thành công. Sau đợt này phải tiếp tục phục vụ bình thường.
 - 24 lần nộp lại cùng ZIP/version/idempotency key phải tạo đúng một bản ghi. Cùng key nhưng input khác phải trả 409.
-- 30 request tạo benchmark khi worker đang bận: chỉ 15 job được chờ; tối đa 4 job chưa kết thúc/đội, phần dư trả 429. Slot thứ 16 dành cho trận chính thức.
+- 30 request benchmark đồng thời (6 đội × 5 lần cùng một bài) khi worker đang bận: hàng đợi nằm trong SQLite, không có giới hạn chung nên cả 30 đều được nhận (202); các yêu cầu giống nhau của một đội dùng chung một job đang chờ, nên chỉ tạo đúng 6 job. Mỗi đội tối đa 4 job đang chạy và 4 yêu cầu đang chờ.
 - 12 kết nối SSE thật giữ mở đồng thời với tải đọc API. Đóng người xem không được hủy job. Thu hồi phiên phải đóng stream và từ chối phiên cũ.
 
 Mỗi client SSE trong bài thử mở một stream; đây không phải phép đo 12 trang Arena đầy đủ hoặc 12 người dùng trình duyệt. Các stream cũng chiếm slot admission của Uvicorn.
@@ -26,8 +26,8 @@ Báo cáo ghi số request, thời gian, throughput, P50/P95/P99/max, HTTP statu
 ## Các sự cố
 
 1. Build lỗi, debug làm hỏng stdout, sai turn ID, nước sai luật, bot crash, vượt giới hạn output: job phải có đúng mã lỗi; bot tốt chạy sau đó vẫn đạt đủ 72 mẫu.
-2. Kill container đang benchmark: ghi lỗi hạ tầng `worker_error`, không giả thành timeout hay tự trao chiến thắng. 15 job đang chờ phải tiếp tục hoàn tất.
-3. Kill controller bằng SIGKILL khi một trận chính thức đang chơi và một job còn chờ. Khởi động lại cùng DB: phiên đăng nhập còn hợp lệ; job cũ `aborted/server_restart`; giải chuyển `paused`; fixture lỗi cần BTC xử lý; điểm vẫn bằng 0.
+2. Kill container đang benchmark: đây là lỗi hạ tầng `worker_error`, không bao giờ bị coi là bot hết giờ hay thua. Benchmark chưa có bàn cờ công khai nên worker tự chạy lại đúng một lần (sự kiện `infrastructure_retry`) và lần chạy lại phải đạt; các job đang chờ phải tiếp tục hoàn tất.
+3. Kill controller bằng SIGKILL khi một trận chính thức đang chơi và một job còn chờ. Khởi động lại cùng DB: phiên đăng nhập còn hợp lệ; trận đang chơi `aborted/server_restart`, job còn chờ được giữ và chạy xong; giải chuyển `paused`; fixture lỗi cần BTC xử lý; điểm vẫn bằng 0.
 4. BTC chủ động retry fixture và gọi start để tiếp tục. Hai lượt phải hoàn tất; attempt cũ còn lịch sử, không được cộng điểm hai lần.
 5. ZIP hỏng, JSON trùng key, thiếu CSRF, truy cập admin bằng tài khoản đội hoặc đọc job đội khác phải bị từ chối. Đăng nhập sai nhiều lần trả 429 và `Retry-After`.
 6. Khởi động controller test với tên image không tồn tại: liveness vẫn hoạt động, readiness và enqueue trả 503, không tạo job giả đang chờ. Khôi phục cấu hình image rồi bot tốt phải đạt 72 mẫu. Image thật và Docker daemon không bị thay đổi.

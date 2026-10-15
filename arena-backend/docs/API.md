@@ -40,7 +40,7 @@ Idempotency-Key: <unique-client-key>
 
 201 trả `id, team_id, version, runtime, protocol_version, source{zip_sha256, files, uncompressed_bytes}, artifact:null`. Source path nội bộ không trả qua submission API. Header version là semver, không được ghi đè. Idempotency-Key 8..128 ký tự: cùng key/cùng input trả record cũ; khác input trả 409. Queue jobs cũng áp dụng idempotency và scope theo đội/operation.
 
-ZIP tối đa 10 MiB, giải nén tối đa 20 MiB, 64 entries, thư mục phẳng, bắt buộc bot.cpp. Chỉ `.cpp/.hpp/.h`, README.md, LICENSE.MIT; không directory, symlink, special file, encrypted ZIP, duplicate name, path traversal, binary, script. Giới hạn beta 20 submissions, 200 jobs/đội, 4 job chưa hoàn tất/đội, queue chung 16. Các limit này là profile local, không phải hạn mức giải đã công bố.
+ZIP tối đa 10 MiB, giải nén tối đa 20 MiB, 64 entries, thư mục phẳng, entry bot.cpp / bot.c / bot.py theo runtime cpp17 / c11 / python3. Chỉ source/header cùng ngôn ngữ, README.md, LICENSE.MIT; không directory, symlink, special file, encrypted ZIP, duplicate name, path traversal, binary, script. Giới hạn beta 20 submissions, 200 jobs/đội, 4 job đang chạy/đội; queue SQLite không cap 16 chung, mỗi loại/đội giữ bài chờ mới nhất, API trả queue_position. Các limit này là profile local, không phải hạn mức giải đã công bố.
 
 ## Tạo benchmark / match
 
@@ -54,7 +54,7 @@ ZIP tối đa 10 MiB, giải nén tối đa 20 MiB, 64 entries, thư mục phẳ
 
 POST tương ứng `/benchmarks` hoặc `/matches`, Content-Type application/json và Idempotency-Key. 202 trả job đầy đủ có `id,status:"queued",submission_ids,profile,image_id,engine_id,engine_sha256,report:null`. Client không gửi command, compiler flags, image, state ban đầu, budget tùy ý hoặc kết quả.
 
-Trạng thái: queued → building → validating → benchmarking/playing → completed|failed|aborted. Một worker queue chạy serial để tránh benchmark tranh CPU với job khác. Trong match, hai bot frozen khi off-turn. Build được cache theo source+SDK+image+flags; báo cáo vẫn chứa manifest của đúng artifact.
+Trạng thái: queued → building → validating → benchmarking/playing → completed|failed|aborted. N worker ghim CPU riêng, ưu tiên official → benchmark → practice; ARENA_WORKERS mặc định CPU khả dụng trừ 2. Trong match, hai bot frozen khi off-turn. Build được cache theo source+SDK+image+flags; báo cáo vẫn chứa manifest của đúng artifact.
 
 `completed` nghĩa job đã chạy xong, không phải được chấp thuận dự giải. API worker lab/luyện tập ở đây trả `eligible_for_tournament:false`. Web API v0.3 có official scope riêng do scheduler tạo sau khi chốt giải; xem [COMPETITIONS.md](COMPETITIONS.md). Trận dừng do guard/restart là aborted, không gán hòa hay điểm.
 
@@ -77,6 +77,9 @@ Artifact/source hashes, compiler version, flags, immutable image ID, engine/suit
 
 ## Lỗi
 
-Envelope: `{"error":{"code":"...","detail":"..."}}`. 400 request/ZIP/runtime/protocol input sai; 401 auth; 403 Host/Origin; 404 record không thuộc đội/không tồn tại; 409 version/idempotency conflict; 429 quota; 503 worker unavailable. Bot fault nằm trong job/report, không phải status HTTP của lệnh tạo job. Không tự retry POST với key mới khi chưa biết kết quả; retry cùng key. Record và idempotency key commit cùng transaction SQLite. Sau restart, job dở dang bị abort; retry cùng key vẫn trả job cũ, không tự chạy trận lần hai.
+Envelope: `{"error":{"code":"...","detail":"..."}}`. 400 request/ZIP/runtime/protocol input sai; 401 auth; 403 Host/Origin; 404 record không thuộc đội/không tồn tại; 409 version/idempotency conflict; 429 quota; 503 worker unavailable. Bot fault nằm trong job/report, không phải status HTTP của lệnh tạo job. Không tự retry POST với key mới khi chưa biết kết quả; retry cùng key. Record và idempotency key commit cùng transaction SQLite. Sau restart, job queued được giữ, job đã claim/chạy dở bị abort; retry cùng key vẫn trả job cũ, không tự chạy trận lần hai.
 
 Đồng hồ cả trận: Bullet 60.000ms hoặc đấu thường 300.000ms **mỗi bot**, không cộng giây. Observation thêm `payload.clocks` (red/blue, ms); `timing.time_control="match"`, `remaining_ms`, `initial_ms`, `increment_ms=0`. `budget_ms` là quỹ còn lại làm tròn xuống; dùng deadline tuyệt đối do worker cấp. Response/action giữ nguyên v2/v3. Benchmark chia chung quỹ cho 72 mẫu. Request `turn_ms` chỉ hỗ trợ cấu hình cũ; không gửi cùng `match_ms`. Xem [TIMING](TIMING.md).
+
+
+Web API chính tại /api/v1: benchmark dự giải nhận {submission_id, competition_id} để ghim luật/quỹ; practice nhận sample_bot_id thay blue_submission_id để đấu bot BTC. Danh mục đội GET /sample-bots; admin GET/POST /admin/sample-bots và POST /admin/sample-bots/{id}/enabled. Upload là raw ZIP, headers X-Bot-Name (URI encoded), X-Bot-Level, X-Arena-Runtime, X-Arena-Protocol, Idempotency-Key; toggle JSON {enabled:true|false}. Không trả source/log bot BTC. Chi tiết schema hiện hành ở [openapi.json](openapi.json) và [BOT-LANGUAGES.md](BOT-LANGUAGES.md).

@@ -84,7 +84,7 @@ Cookie `arena_web_session`: HttpOnly, SameSite=Strict, Path=/api, Secure trên H
 
 `GET /teams/me`, `/dashboard`, `/submissions`, `/jobs` chỉ dùng team ID từ session server. Admin không được giả làm đội bằng query/body. Jobs/source của đội khác trả 404. `/dashboard` có counts thật và 10 job gần nhất; không dựng ELO/bảng xếp hạng từ trận luyện tập.
 
-Nộp source dùng raw `application/zip`, headers `X-Submission-Version`, `X-Arena-Runtime: cpp17`, `Idempotency-Key`. Benchmark/match vẫn là JSON theo [API worker](API.md). Giữ nguyên idempotency key khi retry cùng một thao tác; tạo key mới cho thao tác khác. Queue toàn controller tối đa 16, tối đa 4 job chưa kết thúc/đội. Không nhận `team_id` tùy ý.
+Nộp source dùng raw `application/zip`, headers `X-Submission-Version`, `X-Arena-Runtime: cpp17|c11|python3`, `Idempotency-Key`. Benchmark/match vẫn là JSON theo [API worker](API.md). Giữ nguyên idempotency key khi retry cùng một thao tác; tạo key mới cho thao tác khác. Queue lưu SQLite, không có cap 16 toàn hệ thống; giữ job chờ mới nhất mỗi loại/đội, tối đa 4 job đang chạy và 200 job lịch sử/đội. Không nhận `team_id` tùy ý.
 
 SSE tại `/jobs/{id}/events`: cookie cùng origin, event `arena`, sequence ID tăng dần. Reconnect dùng `Last-Event-ID` hoặc `after`; chỉ patch board, không reload cả trang. Nếu phiên hết hạn/thu hồi giữa stream, server gửi `auth_expired` rồi đóng; UI cần đóng EventSource và về đăng nhập. Server đóng stream sau tối đa 60s; browser nối lại từ cursor.
 
@@ -100,7 +100,7 @@ Danh sách `/admin/*`, `/submissions`, `/jobs` có `limit` 1–100 và `offset`.
 
 ## Timing và giới hạn
 
-Worker protocol/timing không đổi: [PROTOCOL](PROTOCOL.md), [TIMING](TIMING.md). Mặc định C++17, quỹ 5 phút/đội/cả trận; tùy chọn Bullet 1 phút, không increment. Worker monotonic clock quyết định, action phải đến trước deadline cứng; server đại diện đối thủ sau tối thiểu 3s. Clock API chỉ đồng bộ hiển thị. Init/ready 2s; build 30s; run container 256 MiB/1 CPU; build container 1.024 MiB/1 CPU. Codon chưa bật ở API mới.
+Worker protocol/timing không đổi: [PROTOCOL](PROTOCOL.md), [TIMING](TIMING.md). Hỗ trợ C++17, C11 và Python 3.11 (PyPy), cùng quỹ 5 phút/đội/cả trận; tùy chọn Bullet 1 phút, không increment. Worker monotonic clock quyết định, action phải đến trước deadline cứng; server đại diện đối thủ sau tối thiểu 3s. Clock API chỉ đồng bộ hiển thị. Init/ready 2s; build 30s; run container 256 MiB/1 CPU; build container 1.024 MiB/1 CPU. Codon chưa bật ở API mới.
 
 Login throttle lưu DB: 10 lần/username/15 phút, 30 lần/IP/15 phút (tính cả thành công). Đăng ký và recovery mỗi loại 5 lần/IP/giờ. IP ở đây là peer của ASGI, không tin X-Forwarded-For; khi đặt gateway cần giới hạn IP tại gateway riêng. Không ghi Authorization/cookie/password/source vào access log. Audit chỉ chứa actor ID/action/target ID/time.
 
@@ -131,3 +131,6 @@ Shutdown chờ thao tác worker hiện tại kết thúc có giới hạn trư�
 Phạm vi chưa làm: publish UI/API chính lên server, Codon v2, PostgreSQL/distributed scheduler, nhiều worker đồng thời, audit bảo mật độc lập. UI local đã nối API. Chưa public API hoặc tạo tài khoản thật cho người dùng. Beta giải chỉ hỗ trợ vòng tròn hai lượt; chưa có nhánh đấu loại, xử khiếu nại hoặc disqualification sau khi chốt.
 
 Tài liệu nền tảng: [FastAPI lifespan](https://fastapi.tiangolo.com/advanced/events/), [FastAPI security/password hashing](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/).
+
+
+Worker thread cấu hình ARENA_WORKERS (mặc định CPU khả dụng trừ 2), mỗi trận ghim CPU; build semaphore ARENA_BUILD_WORKERS=2. Giữ một Uvicorn process/data directory. Queue có ưu tiên official → benchmark → practice, heartbeat/lease; lỗi hạ tầng tự thử lại một lần khi trận chưa bắt đầu, bot fault không tự retry. Startup dọn container đúng owner label, giữ queued và abort job chạy dở. SSE chia sẻ snapshot/JSON đã lọc, ARENA_CONNECTION_LIMIT=1024. Xem [BOT-LANGUAGES.md](BOT-LANGUAGES.md), [COMPETITIONS.md](COMPETITIONS.md).

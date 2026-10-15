@@ -47,7 +47,7 @@ Các hướng dẫn port 4180 và team token bên dưới áp dụng cho **worke
 
 - Engine theo [luật OTTv2 bạn cung cấp](docs/OTTV2-RULES.md): đúng bố trí 18 quân, Đỏ trước, 8 hướng/1 ô, khắc chế, căn cứ, diệt loại, bí nước và đầu hàng. Tọa độ `a1 = row 8, col 0`; `i9 = row 0, col 8`.
 - HTTP control API có scope theo đội, source/version bất biến, SHA-256, idempotency, giới hạn upload/queue và SQLite lưu trạng thái/event.
-- C++17 mặc định. Codon chưa mở ở backend v1; không có fallback tự chạy Python hoặc source upload trên host.
+- Hỗ trợ C++17, C11 và Python 3.11 (PyPy) trong container, cùng quỹ giờ; không bao giờ chạy source của đội trực tiếp trên host.
 - Compiler và bot chạy trong Docker Linux. Mỗi bot một container, process được dừng bằng SIGSTOP khi không tới lượt. Source không nhận command/build script của đội.
 - JSON Lines protocol v2, init/ready, chống phản hồi cũ/nhầm trận, clock do trusted supervisor trong worker đo.
 - 24 trạng thái OTTv2 phía Đỏ × 3 lần, 72 mẫu không warm-up; báo median/p95/max, CPU cgroup, peak memory toàn container, startup/build/log và provenance.
@@ -96,7 +96,7 @@ Bearer token cho CLI, hoặc đăng nhập console để đổi sang session 1 g
 
 Lỗi protocol, action bất hợp lệ, crash hoặc output limit khi đang đấu là thua kỹ thuật. Lỗi controller/transport/worker là job lỗi, **không** quy thành bot hết giờ. Nếu restart controller, job dở dang thành `aborted`; không resume từ clock của phiên cũ.
 
-Chi tiết phiên bản thể lệ, hòa/startup và hàng đợi ưu tiên: [MATCH-POLICY.md](docs/MATCH-POLICY.md). Official ưu tiên trước practice đang chờ, giữ FIFO trong nhóm; một trong 16 chỗ được dành cho official. Không cắt ngang job đang chạy.
+Chi tiết phiên bản thể lệ, hòa/startup và hàng đợi ưu tiên: [MATCH-POLICY.md](docs/MATCH-POLICY.md). Queue SQLite ưu tiên official → benchmark → practice, FIFO trong nhóm; không còn cap 16 toàn hệ thống. N worker ghim CPU, cấu hình ARENA_WORKERS. Không cắt ngang job đang chạy.
 
 Worker không phải hệ điều hành real-time. Nếu scheduler đọc frame muộn, mốc worker quan sát vẫn quyết định; nên giữ dư thời gian. Bộ test công khai không bảo đảm mọi trạng thái đều kịp. P95 dùng nearest rank, median dùng trung bình hai mẫu giữa khi số mẫu chẵn; timeout không được ghi thành latency thành công.
 
@@ -143,3 +143,6 @@ Build worker mới riêng để giữ image/binary của các giải cũ:
 docker build -t uet-arena-worker:clock-v2 -t uet-arena-worker:experimental-clock-v2 .
 .venv/bin/python tests/time_bank_integration.py
 ```
+
+
+Hướng dẫn ba ngôn ngữ, luật cơ bản theo giải, bot mẫu và chính sách thời gian: [BOT-LANGUAGES.md](docs/BOT-LANGUAGES.md). Swiss 2–4096 đội, hai ván đổi màu, điểm/Buchholz: [COMPETITIONS.md](docs/COMPETITIONS.md). Thử tải nhiều đội: `tests/load_lab/` (xem INSTALL.md).

@@ -1,6 +1,6 @@
 # Quy tắc xử lý kết quả OTTv2 · v2
 
-Được chủ dự án chấp thuận ngày 2026-10-11. Đây là quy tắc vận hành bổ sung cho văn bản luật gốc, không thay đổi nước đi hoặc khắc chế của OTTv2.
+Áp dụng từ ngày 2026-10-11. Đây là quy tắc vận hành bổ sung cho văn bản luật gốc, không thay đổi nước đi hoặc khắc chế của OTTv2.
 
 ## Phạm vi và phiên bản
 
@@ -35,9 +35,9 @@ Deadline trong lượt giữ nguyên: worker monotonic clock, nhận đủ LF tr
 
 ## Hàng đợi
 
-Một worker, tổng hàng đợi tối đa 16; job luyện tập/benchmark chiếm tối đa 15 chỗ, chừa một chỗ cho fixture chính thức. Official có ưu tiên cao hơn practice; cùng nhóm giữ FIFO. Worker reconcile/sinh fixture tiếp theo trước khi lấy job mới, tránh khe giữa hai lần tick scheduler. SQL vẫn là nguồn lịch chính; tối đa một official outstanding.
+N worker, mỗi trận ghim một logical CPU; mặc định số CPU khả dụng trừ 2, cấu hình ARENA_WORKERS. Queue lưu SQLite, không cap 16 toàn hệ thống. Ưu tiên official → benchmark → practice; cùng nhóm FIFO. Mỗi loại/đội giữ bài chờ mới nhất; tối đa 4 job đang chạy và 200 job lịch sử/đội. API trả queue_position. Scheduler giữ tối đa N official outstanding.
 
-Job đang chạy được hoàn tất, không bị cắt ngang để nhường giải. Khi giải đang chạy liên tục, luyện tập có thể phải chờ hết giải. Pause chỉ ngừng dispatch fixture mới; attempt đã nhận vẫn hoàn tất. Đây chưa phải nhiều worker hoặc bảo đảm fairness giữa nhiều giải.
+Job đang chạy được hoàn tất, không bị cắt ngang để nhường giải. Khi giải đang chạy liên tục, luyện tập có thể phải chờ hết giải. Pause chỉ ngừng dispatch fixture mới; attempt đã nhận vẫn hoàn tất. Chưa bảo đảm fairness giữa nhiều giải. Worker thử lại lỗi hạ tầng một lần, không thử lại lỗi do bot. Restart giữ queued, abort job đã claim/chạy dở và không trao điểm; fixture lỗi cần BTC xử lý.
 
 ## Kiểm tra
 
